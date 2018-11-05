@@ -4,6 +4,8 @@ const bodyParser = require('body-parser')
 
 const cors = require('cors')
 
+var userHandler = require('./controllers/userHandler.js');
+
 const mongoose = require('mongoose')
 mongoose.connect(process.env.MLAB_URI || 'mongodb://localhost/exercise-track' )
 
@@ -18,6 +20,13 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/views/index.html')
 });
 
+// create a user by posting form data username to /api/exercise/new-user 
+app.post('/api/exercise/new-user', userHandler.createAndSaveUser);
+
+// get an array of all users by getting api/exercise/users with the same info as when creating a user
+app.get('/api/exercise/users', userHandler.getUsers);
+
+app.post('/api/exercise/add', userHandler.addLog)
 
 // Not found middleware
 app.use((req, res, next) => {
