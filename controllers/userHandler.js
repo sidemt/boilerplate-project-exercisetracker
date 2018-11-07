@@ -6,6 +6,14 @@ var Counter = require('../models/counter.js');
 var User = UserModel.user;
 var Log = UserModel.log;
 
+// regex used for validations
+const validName = /^\w+$/; // allow alphanumeric characters only
+const invalidChar = /[\<\>\&\'\"\$\%\;]/gi; // unwanted charactors in description
+const validDuration = /^\d+$/; // Only numbers
+const validDate = /^(?:\d{4}\-\d{2}\-\d{2}){0,1}$/; // nnnn-nn-nn or empty
+const validUserId = /^\d+$/; // Only numbers
+const validLimit = /^\d+$/; // Only numbers
+
 function getCountAndIncrease (req, res, callback) {
   Counter.findOneAndUpdate({}, {$inc:{'count': 1}}, {new: true}, function(err, data){
     if(err) {
@@ -30,35 +38,41 @@ function getCountAndIncrease (req, res, callback) {
 exports.createAndSaveUser = function(req, res) {
   // The username posted from the form
   var userName = req.body.username;
-  const validName = /^\w+$/; // allow alphanumeric characters only
   
   if (validName.test(userName)) {
-    console.log("user name is valid");
-    // returned will be an object with username and _id
-    getCountAndIncrease(req, res, function(err, cnt){
-      if(err) {
-        console.error(err);
-        res.json({"error": "Failed to create a new user"});
-      } else {
-        console.log("NEW COUNT:" + cnt);
-        var newUser = new User({
-          username: userName,
-          _id: cnt
-        });
-        newUser.save(function(err){
-          if(err){
-            console.error(err);
-            res.json({"error": "could not save the user"});
-          } else {
-            res.json({
-              "username": userName,
-              "_id": cnt
-            });
-          }
-        })
-      }
-    });
-    
+    if(userName.length > 32) {
+      console.log("user name is too long");
+      res.json({"error": "Username is too long"});
+    } else {
+      // user name is short enough
+      
+      console.log("user name is valid");
+      // returned will be an object with username and _id
+      getCountAndIncrease(req, res, function(err, cnt){
+        if(err) {
+          console.error(err);
+          res.json({"error": "Failed to create a new user"});
+        } else {
+          console.log("NEW COUNT:" + cnt);
+          var newUser = new User({
+            username: userName,
+            _id: cnt
+          });
+          newUser.save(function(err){
+            if(err){
+              console.error(err);
+              res.json({"error": "could not save the user"});
+            } else {
+              res.json({
+                "username": userName,
+                "_id": cnt
+              });
+            }
+          })
+        }
+      });
+    }
+
   } else {
     console.log("user name is invalid");
     res.json({
@@ -91,11 +105,18 @@ exports.getUsers = function(req, res) {
 }
 
 function createLog (desc, duration, date) {
-  const validDesc = /^\w+$/; // TODO: add validation
-  const validDuration = /^\d+$/; // Only numbers
-  const validDate = /^(?:\d{4}\-\d{2}\-\d{2}){0,1}$/; // nnnn-nn-nn or empty
   
-  if (validDesc.test(desc) && validDuration.test(duration) && validDate.test(date)) {
+  if (!invalidChar.test(desc) && validDuration.test(duration) && validDate.test(date)) {
+    if (desc.length > 140) {
+      console.log("Description is too long");
+      return new Log();
+    }
+    
+    if (duration.length > 5) {
+      console.log("Duration is too long");
+      return new Log();
+    }
+    
     if (date) {
       var dateObj = new Date(date);
     } else {
@@ -127,8 +148,6 @@ exports.addLog = function(req, res) {
   var description = req.body.description;
   var duration = req.body.duration;
   var date = req.body.date;
-
-  const validUserId = /^\d+$/; // Only numbers  
   
   if (validUserId.test(userId)) {
     console.log("user ID is valid");
@@ -163,4 +182,98 @@ exports.addLog = function(req, res) {
     console.log("user ID is invalid");
     res.json({"error": "User ID is invalid"});
   } 
+}
+
+function filterByDate(date, from, to) {
+  if (validDate.test(from)) {
+    from = new Date(from);
+    if (from.toString() == "Invalid Date") {
+      from = "";
+    }
+  } else {
+    from = "";
+  }
+  if (validDate.test(to)) {
+    to = new Date(to);
+    if (to.toString() == "Invalid Date") {
+      to = "";
+    }
+  } else {
+    to = "";
+  }
+  
+  if (from && to) {
+    if (date >= from && date <= to){
+      return true;
+    }
+    return false;
+  } else if (from) {
+    if (date >= from){
+      return true;
+    }
+    return false;
+  } else if (to) {
+    if (date <= to){
+      return true;
+    }
+    return false;
+  } else {
+    return true;
+  }
+}
+
+// Return will be the user object with added array log and count (total exercise count)
+exports.getLogs = function(req, res) {
+  var userId = req.query.userId;
+  var from = req.query.from || "";
+  var to = req.query.to || "";
+  var limit = req.query.limit;
+  
+  if(validUserId.test(userId)) {
+    // If the given userId is valid
+    User.findOne({_id: userId}, function(err, data) {
+      if (err) {
+        console.error(err);
+        res.json({"error": "could not get logs"});
+      } else if (data) {
+        var allLogs = data.logs;
+        var newArr = [];
+
+        if (from || to) {
+          newArr = allLogs.filter(function(item) {
+            if (item) {
+              return filterByDate(item.date, from, to);
+            } else {
+              // item is null
+              return false;
+            }
+          });
+        } else {
+          newArr = allLogs;
+        }
+
+        if (validLimit.test(limit)) {
+          newArr = newArr.slice(0, limit);
+        }
+
+        var cnt = newArr.length;
+        res.json({
+          username: data.username,
+          _id: data["_id"],
+          count: cnt,
+          logs: newArr
+        });
+      } else {
+        // When the data is empty
+        console.log("Returned data is empty");
+        res.json([]);
+      }
+    });
+
+  } else {
+  // If the given userId is invalid
+    console.log("userId is invalid");
+    res.json({"error": "userId is invalid"});
+  }
+  
 }

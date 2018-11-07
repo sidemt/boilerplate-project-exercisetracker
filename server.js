@@ -26,7 +26,12 @@ app.post('/api/exercise/new-user', userHandler.createAndSaveUser);
 // get an array of all users by getting api/exercise/users with the same info as when creating a user
 app.get('/api/exercise/users', userHandler.getUsers);
 
-app.post('/api/exercise/add', userHandler.addLog)
+// add an exercise to a user by posting form data to /api/exercise/add.
+app.post('/api/exercise/add', userHandler.addLog);
+
+// retrieve a full exercise log of a user by getting /api/exercise/log with a parameter of userId(_id)
+// retrieve part of the log of any user by also passing along optional parameters of from & to or limit
+app.get('/api/exercise/log', userHandler.getLogs);
 
 // Not found middleware
 app.use((req, res, next) => {
